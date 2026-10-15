@@ -1,6 +1,6 @@
 ---
 name: sk-md-slides
-description: "Converts a markdown deck (slides separated by `---` HR boundaries or by `# ` H1 headings, with optional `<!-- notes: ... (Markdown → HTML skill agent; reports to skill-master.)"
+description: "Converts a markdown deck (slides separated by `—` HR boundaries or by `# ` H1 headings, with optional `<!-- notes: ... (Markdown → HTML skill agent; reports to skill-master.)"
 tools: Read, Write, Edit, Bash, Grep, Glob
 model: inherit
 color: cyan

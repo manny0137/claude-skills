@@ -10,5 +10,64 @@
     },
     "enabledPlugins": {
         "ecc@ecc": true
+    },
+    "hooks": {
+        "UserPromptSubmit": [
+            {
+                "hooks": [
+                    {
+                        "type": "command",
+                        "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/agent_activity.py\"",
+                        "timeout": 5
+                    }
+                ]
+            }
+        ],
+        "PreToolUse": [
+            {
+                "matcher": "*",
+                "hooks": [
+                    {
+                        "type": "command",
+                        "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/agent_activity.py\"",
+                        "timeout": 5
+                    }
+                ]
+            }
+        ],
+        "PostToolUse": [
+            {
+                "matcher": "Agent|Task",
+                "hooks": [
+                    {
+                        "type": "command",
+                        "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/agent_activity.py\"",
+                        "timeout": 5
+                    }
+                ]
+            }
+        ],
+        "SubagentStart": [
+            {
+                "hooks": [
+                    {
+                        "type": "command",
+                        "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/agent_activity.py\"",
+                        "timeout": 5
+                    }
+                ]
+            }
+        ],
+        "SubagentStop": [
+            {
+                "hooks": [
+                    {
+                        "type": "command",
+                        "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/agent_activity.py\"",
+                        "timeout": 5
+                    }
+                ]
+            }
+        ]
     }
 }

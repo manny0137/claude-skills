@@ -8,6 +8,9 @@ SKILL.md emits one Claude Code subagent at .claude/agents/sk-<skill>.md, plus:
   .claude/agent-roster/registry.json machine-readable roster read by agent_router.py
   .claude/agent-roster/roster.html   visual roster: master on top, one colored card
                                      per agent, grouped by domain, copy-to-command
+  .claude/agent-roster/office.html   Agent Office: live floor plan of agents at work
+                                     (served by scripts/agent_office.py; template in
+                                     scripts/agent_office_template.html)
 
 Agents are named `sk-<skill-name>` so they never collide with the hand-written
 cs-* agents or Claude Code's built-in agent types. Dual-published skills (the
@@ -118,7 +121,8 @@ def parse_frontmatter(text: str) -> dict:
 
 
 def short_description(desc: str) -> str:
-    desc = re.sub(r"\s+", " ", desc).strip()
+    # A literal "---" inside frontmatter breaks Claude Code's agent parser.
+    desc = re.sub(r"\s+", " ", desc).replace("---", "—").strip()
     if len(desc) <= DESC_LIMIT:
         return desc
     cut = desc[:DESC_LIMIT]
@@ -477,6 +481,15 @@ render();
 """
 
 
+OFFICE_TEMPLATE = Path(__file__).resolve().parent / "agent_office_template.html"
+
+
+def render_office(skills: list) -> str:
+    data = [{k: r[k] for k in ("agent", "skill", "domain", "domain_label", "color")} for r in skills]
+    payload = json.dumps(data, ensure_ascii=False, separators=(",", ":")).replace("</", "<\\/")
+    return OFFICE_TEMPLATE.read_text(encoding="utf-8").replace("__AGENTS_JSON__", payload)
+
+
 def render_registry(skills: list) -> str:
     keep = ("agent", "skill", "domain", "domain_label", "color", "summary", "description", "path")
     return json.dumps({"master": MASTER_NAME, "count": len(skills),
@@ -491,6 +504,7 @@ def planned_files(skills: list) -> dict:
     files[MASTER_FILE] = render_master(skills)
     files[ROSTER_DIR / "registry.json"] = render_registry(skills)
     files[ROSTER_DIR / "roster.html"] = render_roster(skills)
+    files[ROSTER_DIR / "office.html"] = render_office(skills)
     return files
 
 
@@ -538,6 +552,7 @@ def main() -> int:
     print(f"  agents:   {AGENTS_DIR.relative_to(REPO_ROOT)}/")
     print(f"  master:   {MASTER_FILE.relative_to(REPO_ROOT)}")
     print(f"  roster:   {(ROSTER_DIR / 'roster.html').relative_to(REPO_ROOT)}")
+    print(f"  office:   {(ROSTER_DIR / 'office.html').relative_to(REPO_ROOT)}  (live: python3 scripts/agent_office.py)")
     return 0
 
 
