@@ -19,10 +19,15 @@ Skills are taken from the same canonical tree scripts/derive_counters.py counts
 Only symlinks this script manages (links that resolve inside the repo) are
 created or removed; real directories in .claude/skills/ are left alone.
 
+--target installs somewhere else, e.g. ~/.claude/skills to make every skill
+available in all projects on this machine. Links outside the repo are absolute,
+so the clone must stay where it is; other skills already there are untouched.
+
 Usage:
     python scripts/sync-claude-skills.py            # create/update links
     python scripts/sync-claude-skills.py --dry-run  # show what would change
     python scripts/sync-claude-skills.py --check    # exit 1 if links are stale
+    python scripts/sync-claude-skills.py --target ~/.claude/skills  # user-wide
 """
 
 import argparse
@@ -120,12 +125,15 @@ def is_managed_link(link: Path, repo_root: Path) -> bool:
     return target == repo_root or repo_root in target.parents
 
 
-def plan(repo_root: Path, skills: List[Dict]) -> Dict[str, List]:
-    skills_dir = repo_root / ".claude" / "skills"
-    wanted = {}
-    for skill in skills:
-        link = skills_dir / skill["name"]
-        wanted[skill["name"]] = os.path.relpath(repo_root / skill["source"], skills_dir)
+def link_target(repo_root: Path, source: str, skills_dir: Path) -> str:
+    """Relative link inside the repo (survives moving the clone), absolute outside it."""
+    if skills_dir.resolve() == repo_root or repo_root in skills_dir.resolve().parents:
+        return os.path.relpath(repo_root / source, skills_dir)
+    return str(repo_root / source)
+
+
+def plan(repo_root: Path, skills: List[Dict], skills_dir: Path) -> Dict[str, List]:
+    wanted = {s["name"]: link_target(repo_root, s["source"], skills_dir) for s in skills}
 
     create, update, conflict = [], [], []
     for name, target in wanted.items():
@@ -147,8 +155,7 @@ def plan(repo_root: Path, skills: List[Dict]) -> Dict[str, List]:
     return {"create": create, "update": update, "remove": remove, "conflict": conflict}
 
 
-def apply(repo_root: Path, changes: Dict[str, List]) -> None:
-    skills_dir = repo_root / ".claude" / "skills"
+def apply(skills_dir: Path, changes: Dict[str, List]) -> None:
     skills_dir.mkdir(parents=True, exist_ok=True)
     for name in changes["remove"]:
         (skills_dir / name).unlink()
@@ -164,13 +171,15 @@ def main() -> int:
     mode = parser.add_mutually_exclusive_group()
     mode.add_argument("--dry-run", action="store_true", help="show what would change without writing")
     mode.add_argument("--check", action="store_true", help="exit 1 if .claude/skills/ is out of date")
+    parser.add_argument("--target", help="skills directory to link into (default: <repo>/.claude/skills)")
     parser.add_argument("--json", action="store_true", help="print the skill list as JSON")
     parser.add_argument("--verbose", action="store_true", help="list every change")
     args = parser.parse_args()
 
     repo_root = Path(__file__).resolve().parent.parent
     skills = find_skills(repo_root)
-    changes = plan(repo_root, skills)
+    skills_dir = Path(args.target).expanduser().absolute() if args.target else repo_root / ".claude" / "skills"
+    changes = plan(repo_root, skills, skills_dir)
 
     if args.json:
         print(json.dumps(skills, indent=2))
@@ -185,21 +194,21 @@ def main() -> int:
         for name in changes["remove"]:
             print(f"  - {name}")
     for name in changes["conflict"]:
-        print(f"  ! {name}: a real directory already exists in .claude/skills/, left untouched", file=sys.stderr)
+        print(f"  ! {name}: a real directory already exists in {skills_dir}, left untouched", file=sys.stderr)
 
     if args.check:
         if pending:
             print(f"{pending} change(s) pending; run: python scripts/sync-claude-skills.py")
             return 1
-        print(f"Claude skills in sync: {len(skills)} skills linked in .claude/skills/")
+        print(f"Claude skills in sync: {len(skills)} skills linked in {skills_dir}")
         return 0
 
     if not args.dry_run:
-        apply(repo_root, changes)
+        apply(skills_dir, changes)
 
     verb = "Would link" if args.dry_run else "Linked"
     print(
-        f"{verb} {len(skills)} skills in .claude/skills/ "
+        f"{verb} {len(skills)} skills in {skills_dir} "
         f"({len(changes['create'])} new, {len(changes['update'])} updated, {len(changes['remove'])} removed)"
     )
     return 1 if changes["conflict"] else 0
