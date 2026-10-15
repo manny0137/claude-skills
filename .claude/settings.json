@@ -10,5 +10,8 @@
     },
     "enabledPlugins": {
         "ecc@ecc": true
+    },
+    "env": {
+        "SLASH_COMMAND_TOOL_CHAR_BUDGET": "250000"
     }
 }

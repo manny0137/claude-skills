@@ -818,6 +818,7 @@ When I correct you, or you catch yourself making a mistake: before continuing ad
 
 - **.gitignore:** Excludes .vscode/, .DS_Store, AGENTS.md, PROMPTS.md, .env*
 - **Plugin Registry:** [.claude-plugin/marketplace.json](.claude-plugin/marketplace.json) - Marketplace distribution
+- **Project skills:** `.claude/skills/` links every skill so Claude Code sessions opened in this repo can use it (`/<name>`). Regenerate with `python scripts/sync-claude-skills.py` after adding, moving or renaming a skill (`--check` reports drift); `--target ~/.claude/skills` installs them for every project on the machine. `.claude/settings.json` raises `SLASH_COMMAND_TOOL_CHAR_BUDGET` so all descriptions fit in the listing; without it most skills show as bare names and are rarely picked automatically
 - **Standards Library:** [standards/](standards/) - Communication, quality, git, documentation, security
 - **Implementation Plans:** [documentation/implementation/](documentation/implementation/)
 - **Sprint Delivery:** [documentation/delivery/](documentation/delivery/)
