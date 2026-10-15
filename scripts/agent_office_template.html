@@ -1,0 +1,401 @@
+<title>Agent Office</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&family=Figtree:wght@400;500;600;700&family=JetBrains+Mono:wght@500&display=swap">
+<style>
+/* Layout: an office floor plan — the master's desk up top, one room per team with a desk (dot) per agent,
+   agents step out of their desk onto the floor while they work, wired back to whoever dispatched them; live feed on the right. */
+:root {
+  --floor: #e9ecf2; --room: #ffffff; --wall: #cfd4e1; --ink: #151a2c; --muted: #5d6481; --faint: #a9afc4;
+  --desk: #d9dde8; --accent: #3b3fd8; --ok: #15803d; --warn: #b45309; --off: #6b7280;
+  --display: "Bricolage Grotesque", "Avenir Next", system-ui, sans-serif;
+  --body: "Figtree", "Segoe UI", system-ui, sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+  --c-red: #b91c1c; --c-blue: #1d4ed8; --c-green: #15803d; --c-yellow: #a16207;
+  --c-purple: #7e22ce; --c-orange: #c2410c; --c-pink: #be185d; --c-cyan: #0e7490; --c-gray: #4b5563;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --floor: #0d1020; --room: #161a2e; --wall: #2b3050; --ink: #e8eaf6; --muted: #9ba1c0; --faint: #555c80;
+  --desk: #2a2f4c; --accent: #8f93ff; --ok: #4ade80; --warn: #fbbf24; --off: #9ca3af; color-scheme: dark;
+  --c-red: #f87171; --c-blue: #7aa2ff; --c-green: #4ade80; --c-yellow: #facc15;
+  --c-purple: #c084fc; --c-orange: #fdba74; --c-pink: #f472b6; --c-cyan: #22d3ee; --c-gray: #9ca3af;
+} }
+:root[data-theme="dark"] {
+  --floor: #0d1020; --room: #161a2e; --wall: #2b3050; --ink: #e8eaf6; --muted: #9ba1c0; --faint: #555c80;
+  --desk: #2a2f4c; --accent: #8f93ff; --ok: #4ade80; --warn: #fbbf24; --off: #9ca3af; color-scheme: dark;
+  --c-red: #f87171; --c-blue: #7aa2ff; --c-green: #4ade80; --c-yellow: #facc15;
+  --c-purple: #c084fc; --c-orange: #fdba74; --c-pink: #f472b6; --c-cyan: #22d3ee; --c-gray: #9ca3af;
+}
+* { box-sizing: border-box; }
+body { background: var(--floor); color: var(--ink); font: 14px/1.45 var(--body); margin: 0;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); padding-block: 18px 40px; }
+.top { max-width: 1440px; margin: 0 auto 14px; display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; }
+h1 { font: 800 1.7rem/1.1 var(--display); letter-spacing: -0.02em; margin: 0; }
+.pill { font: 600 0.72rem var(--body); letter-spacing: 0.08em; text-transform: uppercase; padding: 4px 10px; border-radius: 999px;
+  border: 1px solid var(--wall); background: var(--room); color: var(--muted); display: inline-flex; align-items: center; gap: 7px; }
+.pill i { width: 8px; height: 8px; border-radius: 50%; background: var(--faint); }
+.pill.live i { background: var(--ok); } .pill.demo i { background: var(--accent); } .pill.err i { background: var(--warn); }
+.controls { margin-left: auto; display: flex; flex-wrap: wrap; gap: 8px; }
+.btn { font: 600 0.8rem var(--body); border: 1px solid var(--wall); background: var(--room); color: var(--ink); border-radius: 8px;
+  padding: 6px 12px; cursor: pointer; }
+.btn:hover { border-color: var(--accent); }
+.btn:focus-visible, .dot:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.layout { max-width: 1440px; margin: 0 auto; display: grid; grid-template-columns: minmax(0, 1fr) 330px; gap: 16px; align-items: start; }
+@media (max-width: 900px) { .layout { grid-template-columns: 1fr; } }
+.floor { position: relative; display: grid; gap: 16px; min-width: 0; }
+#wires { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; overflow: visible; z-index: 3; }
+#wires path { fill: none; stroke-width: 1.8; opacity: 0.6; }
+#wires path.working { stroke-dasharray: 5 6; animation: flow 0.9s linear infinite; }
+#wires path.done { opacity: 0.18; }
+@keyframes flow { to { stroke-dashoffset: -11; } }
+
+.master { position: relative; z-index: 2; background: var(--room); border: 1px solid var(--wall); border-radius: 14px; padding: 16px 18px;
+  display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 6px 16px; align-items: center; }
+.avatar { width: 54px; height: 54px; border-radius: 14px; background: var(--c-red); color: var(--room); display: grid; place-items: center;
+  font: 800 1.3rem var(--display); position: relative; }
+.master.busy .avatar::after { content: ""; position: absolute; inset: -5px; border-radius: 18px; border: 2px solid var(--c-red); animation: ring 1.6s ease-out infinite; }
+@keyframes ring { from { opacity: 0.9; transform: scale(0.96); } to { opacity: 0; transform: scale(1.12); } }
+.master h2 { font: 700 1.15rem var(--display); margin: 0; }
+.mstate { color: var(--muted); }
+.request { grid-column: 2 / -1; font-size: 0.92rem; border-left: 3px solid var(--wall); padding-left: 10px; color: var(--ink); overflow-wrap: anywhere; }
+.request:empty { display: none; }
+.counts { display: flex; gap: 14px; font-variant-numeric: tabular-nums; }
+.counts div { text-align: right; } .counts b { display: block; font: 700 1.25rem var(--display); }
+.counts span { font-size: 0.7rem; letter-spacing: 0.07em; text-transform: uppercase; color: var(--muted); }
+@media (max-width: 620px) { .master { grid-template-columns: auto minmax(0, 1fr); } .counts { grid-column: 1 / -1; } .counts div { text-align: left; } .request { grid-column: 1 / -1; } }
+
+.rooms { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 12px; position: relative; z-index: 2; }
+.room { background: var(--room); border: 1px solid var(--wall); border-radius: 10px; padding: 10px 11px 12px; display: grid; gap: 8px; align-content: start; min-width: 0; }
+.room.hot { border-color: var(--tone); box-shadow: 0 0 0 1px var(--tone); }
+.room-head { display: flex; align-items: center; gap: 7px; font: 600 0.82rem var(--body); }
+.room-head .sw { width: 9px; height: 9px; border-radius: 2px; background: var(--tone); flex: none; }
+.room-head .n { margin-left: auto; font: 500 0.7rem var(--mono); color: var(--muted); font-variant-numeric: tabular-nums; }
+.duty { display: grid; gap: 6px; }
+.duty:empty { display: none; }
+.desks { display: flex; flex-wrap: wrap; gap: 3px; }
+.dot { width: 9px; height: 9px; border-radius: 2px; background: var(--desk); border: 0; padding: 0; cursor: default; }
+.dot.on { background: var(--tone); }
+.dot.fin { background: color-mix(in srgb, var(--tone) 45%, var(--desk)); }
+
+.chip { --tone: var(--c-gray); border: 1px solid var(--wall); border-left: 3px solid var(--tone); border-radius: 8px; padding: 7px 9px;
+  display: grid; gap: 3px; background: var(--room); min-width: 0; }
+.chip .row { display: flex; align-items: center; gap: 7px; min-width: 0; }
+.chip .nm { font: 600 0.84rem var(--body); overflow-wrap: anywhere; min-width: 0; }
+.chip .meta { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; }
+.chip .t { font: 500 0.68rem var(--mono); color: var(--muted); font-variant-numeric: tabular-nums; }
+.chip .act { font: 500 0.72rem var(--mono); color: var(--muted); overflow-wrap: anywhere; }
+.chip .res { font-size: 0.78rem; color: var(--ink); overflow-wrap: anywhere; }
+.pulse { width: 8px; height: 8px; border-radius: 50%; background: var(--tone); flex: none; }
+.chip.working .pulse { animation: blink 1s ease-in-out infinite; }
+.chip.queued .pulse { background: transparent; border: 2px solid var(--tone); }
+@keyframes blink { 50% { opacity: 0.25; } }
+.badge { font: 700 0.62rem var(--body); letter-spacing: 0.06em; padding: 1px 6px; border-radius: 4px; flex: none; }
+.b-done { color: var(--ok); border: 1px solid var(--ok); } .b-needs { color: var(--warn); border: 1px solid var(--warn); }
+.b-oos { color: var(--off); border: 1px solid var(--off); }
+
+.feed { background: var(--room); border: 1px solid var(--wall); border-radius: 12px; padding: 12px 12px 6px; position: sticky;
+  top: calc(env(safe-area-inset-top, 0px) + 12px); max-height: calc(100vh - 40px); display: grid; grid-template-rows: auto 1fr; min-width: 0; }
+@media (max-width: 900px) { .feed { position: static; max-height: 420px; } }
+.feed h2 { font: 700 0.95rem var(--display); margin: 0 0 8px; display: flex; justify-content: space-between; align-items: baseline; }
+.feed h2 span { font: 500 0.7rem var(--mono); color: var(--muted); }
+.feed ol { list-style: none; margin: 0; padding: 0; overflow-y: auto; display: grid; gap: 1px; align-content: start; }
+.feed li { display: grid; grid-template-columns: 58px minmax(0, 1fr); gap: 8px; padding: 6px 2px; border-top: 1px solid var(--wall); font-size: 0.8rem; }
+.feed time { font: 500 0.68rem var(--mono); color: var(--muted); padding-top: 2px; font-variant-numeric: tabular-nums; }
+.feed .who { font-weight: 600; color: var(--tone); }
+.feed .msg { overflow-wrap: anywhere; }
+.empty { color: var(--muted); font-size: 0.82rem; padding: 8px 2px; }
+.note { max-width: 1440px; margin: 14px auto 0; color: var(--muted); font-size: 0.8rem; }
+.note code { font: 500 0.78rem var(--mono); }
+@media (prefers-reduced-motion: reduce) { #wires path.working, .chip.working .pulse, .master.busy .avatar::after { animation: none; } }
+</style>
+
+<div class="top">
+  <h1>Agent Office</h1>
+  <span class="pill" id="mode"><i></i><span id="mode-text">Starting</span></span>
+  <div class="controls">
+    <button type="button" class="btn" id="btn-demo">Replay demo</button>
+    <label class="btn" for="file">Load activity log</label>
+    <input type="file" id="file" accept=".jsonl,.json,.log,.txt" hidden>
+    <button type="button" class="btn" id="btn-clear">Clear floor</button>
+  </div>
+</div>
+
+<div class="layout">
+  <div class="floor" id="floor">
+    <svg id="wires" aria-hidden="true"></svg>
+    <section class="master" id="master" aria-label="Master agent">
+      <div class="avatar" id="master-anchor" aria-hidden="true">M</div>
+      <div><h2>skill-master</h2><div class="mstate" id="mstate">Idle</div></div>
+      <div class="counts">
+        <div><b id="k-work">0</b><span>Working</span></div>
+        <div><b id="k-done">0</b><span>Done</span></div>
+        <div><b id="k-needs">0</b><span>Need you</span></div>
+        <div><b id="k-tools">0</b><span>Tool calls</span></div>
+      </div>
+      <div class="request" id="request"></div>
+    </section>
+    <div class="rooms" id="rooms"></div>
+  </div>
+  <aside class="feed" aria-label="Activity feed">
+    <h2>Activity <span id="feed-n">0 events</span></h2>
+    <ol id="feed"><li class="empty">Nothing yet. Activity appears here as agents work.</li></ol>
+  </aside>
+</div>
+<p class="note" id="note"></p>
+
+<script>
+const AGENTS = __AGENTS_JSON__;
+const BY_NAME = new Map(AGENTS.map(a => [a.agent, a]));
+const MASTER = 'skill-master';
+
+const DEMO = [
+  [0, {kind: 'prompt', text: 'Price our new enterprise tier, plan its launch, and tell me whether we are SOC 2-ready to sell it.'}],
+  [900, {kind: 'route', text: 'agent_router.py: 3 parts → pricing-strategist, launch-strategy, soc2-compliance'}],
+  [900, {kind: 'dispatch', agent: 'sk-pricing-strategist', from: 'main', text: 'Price the enterprise tier', id: 'd1'}],
+  [150, {kind: 'dispatch', agent: 'sk-launch-strategy', from: 'main', text: 'Plan the enterprise tier launch', id: 'd2'}],
+  [150, {kind: 'dispatch', agent: 'sk-soc2-compliance', from: 'main', text: 'SOC 2 readiness for enterprise buyers', id: 'd3'}],
+  [500, {kind: 'start', agent: 'sk-pricing-strategist'}],
+  [100, {kind: 'start', agent: 'sk-launch-strategy'}],
+  [100, {kind: 'start', agent: 'sk-soc2-compliance'}],
+  [500, {kind: 'tool', agent: 'sk-pricing-strategist', tool: 'Read', text: 'SKILL.md'}],
+  [300, {kind: 'tool', agent: 'sk-soc2-compliance', tool: 'Read', text: 'SKILL.md'}],
+  [300, {kind: 'tool', agent: 'sk-launch-strategy', tool: 'Read', text: 'SKILL.md'}],
+  [1100, {kind: 'tool', agent: 'sk-pricing-strategist', tool: 'Bash', text: 'Pick a pricing model (pricing_model_picker.py)'}],
+  [900, {kind: 'tool', agent: 'sk-soc2-compliance', tool: 'Bash', text: 'Run gap analysis (gap_analyzer.py)'}],
+  [1200, {kind: 'tool', agent: 'sk-launch-strategy', tool: 'Bash', text: 'Score launch readiness (launch_readiness_scorer.py)'}],
+  [1000, {kind: 'tool', agent: 'sk-pricing-strategist', tool: 'Bash', text: 'Design packaging tiers (packaging_designer.py)'}],
+  [900, {kind: 'tool', agent: 'sk-soc2-compliance', tool: 'Bash', text: 'Build control matrix (control_matrix_builder.py)'}],
+  [1300, {kind: 'stop', agent: 'sk-launch-strategy', status: 'DONE', result: 'Readiness 72/100. Launch in 6 weeks; sales enablement and 2 reference customers are the gaps.'}],
+  [200, {kind: 'returned', agent: 'sk-launch-strategy', id: 'd2'}],
+  [1100, {kind: 'tool', agent: 'sk-pricing-strategist', tool: 'Write', text: 'enterprise-pricing.md'}],
+  [1000, {kind: 'stop', agent: 'sk-soc2-compliance', status: 'NEEDS-INPUT', result: '14 of 61 controls missing. Need to know: is a Type I report acceptable to your first buyers?'}],
+  [200, {kind: 'returned', agent: 'sk-soc2-compliance', id: 'd3'}],
+  [1200, {kind: 'stop', agent: 'sk-pricing-strategist', status: 'DONE', result: 'Seat-based with a usage add-on. Enterprise at $48–62/seat/mo, 50-seat minimum; route anything over 20% off to the deal desk.'}],
+  [200, {kind: 'returned', agent: 'sk-pricing-strategist', id: 'd1'}],
+];
+
+// ---------------------------------------------------------------- state
+const S = { request: '', routing: '', agents: new Map(), tools: 0, feed: 0 };
+const roomsEl = document.getElementById('rooms'), floor = document.getElementById('floor');
+const rooms = new Map();   // label -> {el, duty, count, total}
+const dots = new Map();    // agent -> dot el
+
+function esc(s) { return String(s ?? '').replace(/[&<>"]/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;'})[c]); }
+function info(name) {
+  return BY_NAME.get(name) || {agent: name, skill: name, domain: 'other', domain_label: 'Other agents', color: 'gray'};
+}
+function short(name) { return name.startsWith('sk-') ? name.slice(3) : name; }
+
+function room(label, color) {
+  if (rooms.has(label)) return rooms.get(label);
+  const el = document.createElement('section');
+  el.className = 'room';
+  el.style.setProperty('--tone', `var(--c-${color})`);
+  el.innerHTML = `<div class="room-head"><i class="sw"></i><span>${esc(label)}</span><span class="n"></span></div><div class="duty"></div><div class="desks"></div>`;
+  roomsEl.appendChild(el);
+  const r = {el, duty: el.querySelector('.duty'), n: el.querySelector('.n'), desks: el.querySelector('.desks'), total: 0};
+  rooms.set(label, r);
+  return r;
+}
+function buildFloor() {
+  for (const a of [...AGENTS].sort((x, y) => x.domain_label.localeCompare(y.domain_label) || x.skill.localeCompare(y.skill))) {
+    const r = room(a.domain_label, a.color);
+    const d = document.createElement('span');
+    d.className = 'dot'; d.title = a.agent; d.tabIndex = 0;
+    r.desks.appendChild(d); dots.set(a.agent, d); r.total++;
+  }
+  for (const r of rooms.values()) r.n.textContent = `${r.total} agents`;
+}
+
+function ensure(name) {
+  if (!S.agents.has(name)) {
+    const a = info(name);
+    if (!dots.has(name)) {  // agents outside the roster get a desk in "Other agents"
+      const r = room(a.domain_label, a.color);
+      const d = document.createElement('span'); d.className = 'dot'; d.title = name;
+      r.desks.appendChild(d); dots.set(name, d); r.total++;
+    }
+    S.agents.set(name, {name, info: a, state: 'queued', text: '', act: '', result: '', status: '', tools: 0, t0: Date.now(), t1: 0, from: 'main'});
+  }
+  return S.agents.get(name);
+}
+const FINISHED = {DONE: 'done', 'NEEDS-INPUT': 'needs', 'OUT-OF-SCOPE': 'oos'};
+
+function apply(e, quiet) {
+  const now = e.ts ? e.ts * 1000 : Date.now();
+  switch (e.kind) {
+    case 'prompt':
+      for (const [k, a] of S.agents) if (!['queued', 'working'].includes(a.state)) S.agents.delete(k);
+      S.request = e.text; S.routing = 'Reading the request';
+      log(MASTER, `New request: “${e.text}”`, now, quiet); break;
+    case 'route':
+      S.routing = 'Routing'; log(MASTER, e.text || 'Routing the request', now, quiet); break;
+    case 'dispatch': {
+      const a = ensure(e.agent);
+      Object.assign(a, {state: 'queued', text: e.text, act: 'Briefed: ' + (e.text || ''), result: '', status: '', from: e.from || 'main', t0: now, t1: 0});
+      S.routing = '';
+      log(e.from && e.from !== 'main' ? e.from : MASTER, `dispatched <b>@${esc(e.agent)}</b>: ${esc(e.text)}`, now, quiet, true); break;
+    }
+    case 'start': {
+      const a = ensure(e.agent); a.state = 'working'; if (!a.text) a.t0 = now;
+      a.act = a.act || 'Starting'; log(e.agent, 'started work', now, quiet); break;
+    }
+    case 'tool': {
+      const a = ensure(e.agent); if (a.state === 'queued' || !FINISHED[a.status]) a.state = 'working';
+      a.act = `${e.tool}${e.text ? ' · ' + e.text : ''}`; a.tools++; S.tools++;
+      log(e.agent, `<span style="font-family:var(--mono)">${esc(e.tool)}</span> ${esc(e.text || '')}`, now, quiet, true); break;
+    }
+    case 'stop': case 'returned': {
+      const a = ensure(e.agent);
+      if (FINISHED[a.status] && e.kind === 'returned') break;
+      a.status = e.status || a.status || 'DONE'; a.state = FINISHED[a.status] || 'done';
+      a.result = e.result || a.result; a.t1 = now;
+      log(e.agent, `finished — <b>${esc(a.status)}</b>${a.result ? ': ' + esc(a.result) : ''}`, now, quiet, true); break;
+    }
+  }
+}
+
+// ---------------------------------------------------------------- feed
+const feedEl = document.getElementById('feed');
+function log(who, html, ts, quiet, isHtml) {
+  const a = who === MASTER ? {color: 'red'} : info(who);
+  if (feedEl.firstElementChild?.classList.contains('empty')) feedEl.innerHTML = '';
+  const li = document.createElement('li');
+  const t = new Date(ts).toLocaleTimeString([], {hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false});
+  li.innerHTML = `<time>${t}</time><div class="msg" style="--tone: var(--c-${a.color})"><span class="who">${esc(short(who))}</span> ${isHtml ? html : esc(html)}</div>`;
+  feedEl.prepend(li);
+  while (feedEl.children.length > 250) feedEl.lastElementChild.remove();
+  document.getElementById('feed-n').textContent = `${++S.feed} event${S.feed === 1 ? '' : 's'}`;
+}
+
+// ---------------------------------------------------------------- render
+function secs(a) { return Math.max(0, Math.round(((a.t1 || Date.now()) - a.t0) / 1000)); }
+function render() {
+  let work = 0, done = 0, needs = 0;
+  const onDuty = new Map();
+  for (const a of S.agents.values()) {
+    if (a.state === 'working' || a.state === 'queued') work++;
+    else if (a.state === 'needs') needs++; else done++;
+    const label = a.info.domain_label;
+    if (!onDuty.has(label)) onDuty.set(label, []);
+    onDuty.get(label).push(a);
+  }
+  for (const [label, r] of rooms) {
+    const list = onDuty.get(label) || [];
+    r.el.classList.toggle('hot', list.some(a => a.state === 'working' || a.state === 'queued'));
+    const busy = list.filter(a => a.state === 'working' || a.state === 'queued').length;
+    r.n.textContent = busy ? `${busy} working · ${r.total}` : `${r.total} agents`;
+    r.duty.innerHTML = list.map(a => {
+      const badge = {done: '<span class="badge b-done">DONE</span>', needs: '<span class="badge b-needs">NEEDS INPUT</span>',
+        oos: '<span class="badge b-oos">OUT OF SCOPE</span>'}[a.state] || '';
+      const line = ['done', 'needs', 'oos'].includes(a.state) ? `<div class="res">${esc(a.result || 'Report returned')}</div>`
+        : `<div class="act">${esc(a.act || a.text || '')}</div>`;
+      return `<article class="chip ${a.state}" data-agent="${esc(a.name)}" style="--tone: var(--c-${a.info.color})">
+        <div class="row"><i class="pulse"></i><span class="nm" title="${esc(a.name)}">${esc(short(a.name))}</span></div>
+        <div class="meta">${badge}<span class="t">${secs(a)}s · ${a.tools} tool${a.tools === 1 ? '' : 's'}</span></div>${line}</article>`;
+    }).join('');
+  }
+  for (const [name, d] of dots) {
+    const a = S.agents.get(name);
+    d.className = 'dot' + (!a ? '' : (a.state === 'working' || a.state === 'queued') ? ' on' : ' fin');
+  }
+  const m = document.getElementById('master');
+  m.classList.toggle('busy', work > 0 || !!S.routing);
+  document.getElementById('mstate').textContent =
+    work ? `Coordinating ${work} agent${work > 1 ? 's' : ''}` :
+    S.routing ? S.routing + '…' :
+    needs ? `Waiting on you: ${needs} agent${needs > 1 ? 's need' : ' needs'} input` :
+    S.request ? 'Done. Answer combined and returned.' : 'Idle. Send /master <request> to put the team to work.';
+  document.getElementById('request').textContent = S.request ? `“${S.request}”` : '';
+  document.getElementById('k-work').textContent = work;
+  document.getElementById('k-done').textContent = done;
+  document.getElementById('k-needs').textContent = needs;
+  document.getElementById('k-tools').textContent = S.tools;
+  drawWires();
+}
+
+function drawWires() {
+  const svg = document.getElementById('wires');
+  const box = floor.getBoundingClientRect();
+  const anchor = document.getElementById('master-anchor').getBoundingClientRect();
+  const mx = anchor.left + anchor.width / 2 - box.left, my = anchor.bottom - box.top;
+  svg.setAttribute('viewBox', `0 0 ${box.width} ${box.height}`);
+  const paths = [];
+  for (const chip of floor.querySelectorAll('.chip')) {
+    const a = S.agents.get(chip.dataset.agent); if (!a) continue;
+    const src = a.from && a.from !== 'main' && floor.querySelector(`.chip[data-agent="${CSS.escape(a.from)}"]`);
+    let sx = mx, sy = my;
+    if (src) { const s = src.getBoundingClientRect(); sx = s.left + s.width / 2 - box.left; sy = s.bottom - box.top; }
+    const c = chip.getBoundingClientRect();
+    const tx = c.left + 14 - box.left, ty = c.top - box.top;
+    const k = Math.max(30, (ty - sy) * 0.5);
+    const cls = (a.state === 'working' || a.state === 'queued') ? 'working' : 'done';
+    paths.push(`<path class="${cls}" style="stroke: var(--c-${a.info.color})" d="M${sx},${sy} C${sx},${sy + k} ${tx},${ty - k} ${tx},${ty}"/>`);
+  }
+  svg.innerHTML = paths.join('');
+}
+
+setInterval(() => {
+  for (const t of floor.querySelectorAll('.chip.working .t, .chip.queued .t')) {
+    const a = S.agents.get(t.closest('.chip').dataset.agent);
+    if (a) t.textContent = `${secs(a)}s · ${a.tools} tool${a.tools === 1 ? '' : 's'}`;
+  }
+}, 1000);
+addEventListener('resize', drawWires);
+
+// ---------------------------------------------------------------- sources
+let timer = null;
+function setMode(cls, text, note) {
+  const m = document.getElementById('mode'); m.className = 'pill ' + cls;
+  document.getElementById('mode-text').textContent = text;
+  document.getElementById('note').innerHTML = note || '';
+}
+function reset() {
+  clearTimeout(timer); S.agents.clear(); S.request = ''; S.routing = ''; S.tools = 0; S.feed = 0;
+  feedEl.innerHTML = '<li class="empty">Nothing yet. Activity appears here as agents work.</li>';
+  document.getElementById('feed-n').textContent = '0 events';
+  render();
+}
+function play(events, label, opts = {}) {
+  reset();
+  const skip = opts.prefill || 0;
+  events.slice(0, skip).forEach(([, e]) => apply(e, true));
+  render();
+  let i = skip;
+  const step = () => {
+    if (i >= events.length) { if (opts.loop) timer = setTimeout(() => play(events, label, opts), 7000); return; }
+    const [, e] = events[i++]; apply(e); render();
+    const next = events[i]; timer = setTimeout(step, next ? Math.min(next[0], 1800) : 0);
+  };
+  timer = setTimeout(step, 600);
+}
+function startDemo() {
+  setMode('demo', 'Demo replay', 'Example run, not your data. Live view: run <code>python3 scripts/agent_office.py</code> in this repo, then use <code>/master</code> in Claude Code.');
+  play(DEMO, 'demo', {prefill: 12, loop: true});
+}
+function startLive() {
+  setMode('live', 'Connecting', 'Live from <code>.claude/agent-roster/activity.jsonl</code>. Use <code>/master &lt;request&gt;</code> or <code>@sk-…</code> in Claude Code to see agents here.');
+  reset();
+  const es = new EventSource('/events');
+  es.addEventListener('backlog', ev => { try { apply(JSON.parse(ev.data), true); } catch (_) {} });
+  es.addEventListener('ready', () => { setMode('live', 'Live', document.getElementById('note').innerHTML); render(); });
+  es.onmessage = ev => { try { apply(JSON.parse(ev.data)); render(); } catch (_) {} };
+  es.onerror = () => setMode('err', 'Reconnecting', document.getElementById('note').innerHTML);
+}
+
+document.getElementById('btn-demo').addEventListener('click', startDemo);
+document.getElementById('btn-clear').addEventListener('click', () => { clearTimeout(timer); S.agents.clear(); S.request = ''; S.routing = ''; render(); });
+document.getElementById('file').addEventListener('change', async ev => {
+  const f = ev.target.files[0]; if (!f) return;
+  const rows = (await f.text()).split('\n').map(l => { try { return JSON.parse(l); } catch (_) { return null; } }).filter(r => r && r.kind);
+  if (!rows.length) { setMode('err', 'Not an activity log', 'That file has no Agent Office events. Pick <code>.claude/agent-roster/activity.jsonl</code>.'); return; }
+  const events = rows.map((r, i) => [i ? Math.max(120, ((r.ts || 0) - (rows[i - 1].ts || 0)) * 1000) : 0, r]);
+  setMode('demo', `Replaying ${f.name}`, `Replaying ${rows.length} recorded events, with long pauses shortened.`);
+  play(events, f.name);
+  ev.target.value = '';
+});
+
+buildFloor();
+if (window.AGENT_OFFICE_LIVE) startLive(); else startDemo();
+</script>
