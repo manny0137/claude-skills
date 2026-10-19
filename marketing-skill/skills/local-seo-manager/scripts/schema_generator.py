@@ -8,25 +8,76 @@ or wp_head hook) or any HTML <head>.
 
 Usage:
     python3 schema_generator.py [--config config.json] [--type local-business|service-area|faq]
+                                [--country NZ] [--business-type MovingCompany]
+    python3 schema_generator.py --sample
 
-If no config provided, runs with embedded sample data.
+If no config provided (or --sample is passed), runs with embedded sample data.
+
+--country        ISO 3166-1 alpha-2 code for addressCountry (default: config
+                 address.country or country, else "US").
+--business-type  schema.org LocalBusiness subtype, e.g. MovingCompany, Plumber,
+                 HVACBusiness, Electrician, HousePainter, Locksmith. Default:
+                 ["LocalBusiness", "HomeAndConstructionBusiness"].
 
 Output: JSON-LD block(s) ready for <script type="application/ld+json"> tags.
 """
 
 import json
 import argparse
+import re
+import sys
 from typing import Dict, List, Optional
+
+
+DEFAULT_COUNTRY = "US"
+DEFAULT_BUSINESS_TYPE = ["LocalBusiness", "HomeAndConstructionBusiness"]
+
+# Common schema.org LocalBusiness subtypes for service-area businesses. Not
+# exhaustive — an unlisted subtype is still emitted, with a stderr warning so a
+# typo (e.g. "MovingCompnay") is caught before it reaches the validator.
+KNOWN_BUSINESS_TYPES = {
+    "LocalBusiness", "HomeAndConstructionBusiness", "ProfessionalService",
+    "MovingCompany", "Plumber", "HVACBusiness", "Electrician", "RoofingContractor",
+    "GeneralContractor", "HousePainter", "Locksmith", "AutoRepair", "AutomotiveBusiness",
+    "DryCleaningOrLaundry", "EmergencyService", "SelfStorage", "AnimalShelter",
+    "ChildCare", "HealthAndBeautyBusiness", "LegalService", "Attorney",
+    "FinancialService", "AccountingService", "RealEstateAgent", "TravelAgency",
+    "Dentist", "MedicalBusiness", "Store", "HomeGoodsStore", "HardwareStore",
+}
+
+
+def resolve_country(cli_value: Optional[str], config: Dict) -> str:
+    """CLI flag > config address.country / country > "US". Validated as ISO 3166-1 alpha-2."""
+    value = (cli_value or config.get('address', {}).get('country') or config.get('country')
+             or DEFAULT_COUNTRY)
+    value = value.strip().upper()
+    if not re.fullmatch(r'[A-Z]{2}', value):
+        raise ValueError(f"--country must be an ISO 3166-1 alpha-2 code (e.g. US, NZ, GB), got {value!r}")
+    return value
+
+
+def resolve_business_type(cli_value: Optional[str], config: Dict):
+    """CLI flag > config schema_type > default LocalBusiness + HomeAndConstructionBusiness."""
+    value = cli_value or config.get('schema_type')
+    if not value:
+        return list(DEFAULT_BUSINESS_TYPE)
+    value = value.strip()
+    if not re.fullmatch(r'[A-Z][A-Za-z]+', value):
+        raise ValueError(f"--business-type must be a schema.org type name in PascalCase (e.g. MovingCompany), got {value!r}")
+    if value not in KNOWN_BUSINESS_TYPES:
+        print(f"[WARN] '{value}' is not in the built-in list of LocalBusiness subtypes — "
+              f"check spelling at https://schema.org/{value}", file=sys.stderr)
+    return value
 
 
 # ─── Schema builders ──────────────────────────────────────────────────────────
 
-def build_local_business(config: Dict) -> Dict:
-    """Build LocalBusiness + HomeAndConstructionBusiness schema."""
+def build_local_business(config: Dict, country: str = DEFAULT_COUNTRY, business_type=None) -> Dict:
+    """Build LocalBusiness schema (default type: LocalBusiness + HomeAndConstructionBusiness)."""
     address = config.get('address', {})
     schema = {
         "@context": "https://schema.org",
-        "@type": ["LocalBusiness", "HomeAndConstructionBusiness"],
+        "@type": business_type or list(DEFAULT_BUSINESS_TYPE),
         "name": config['business_name'],
         "url": config['website'],
         "telephone": config['phone'],
@@ -39,7 +90,7 @@ def build_local_business(config: Dict) -> Dict:
             "addressLocality": address.get('city', ''),
             "addressRegion": address.get('state', ''),
             "postalCode": address.get('zip', ''),
-            "addressCountry": "US"
+            "addressCountry": country
         },
         "openingHoursSpecification": _build_hours(config.get('hours', {})),
         "sameAs": config.get('social_profiles', []),
@@ -59,14 +110,17 @@ def build_local_business(config: Dict) -> Dict:
     return schema
 
 
-def build_service(config: Dict, service_name: str, neighborhood: str = '', description: str = '') -> Dict:
+def build_service(config: Dict, service_name: str, neighborhood: str = '', description: str = '',
+                  business_type=None) -> Dict:
     """Build Service schema for a specific service page."""
+    # The provider is a single entity reference — use the specific subtype when one was given.
+    provider_type = business_type if isinstance(business_type, str) else "LocalBusiness"
     schema = {
         "@context": "https://schema.org",
         "@type": "Service",
         "serviceType": service_name,
         "provider": {
-            "@type": "LocalBusiness",
+            "@type": provider_type,
             "name": config['business_name'],
             "telephone": config['phone'],
             "url": config['website'],
@@ -104,11 +158,13 @@ def build_faq_page(faqs: List[Dict]) -> Dict:
     }
 
 
-def build_service_area_page_schemas(config: Dict, neighborhood: str, primary_service: str, faqs: Optional[List[Dict]] = None) -> List[Dict]:
+def build_service_area_page_schemas(config: Dict, neighborhood: str, primary_service: str,
+                                    faqs: Optional[List[Dict]] = None,
+                                    country: str = DEFAULT_COUNTRY, business_type=None) -> List[Dict]:
     """Return all schema blocks needed for a service area page."""
     schemas = [
-        build_local_business(config),
-        build_service(config, primary_service, neighborhood),
+        build_local_business(config, country=country, business_type=business_type),
+        build_service(config, primary_service, neighborhood, business_type=business_type),
     ]
     if faqs:
         schemas.append(build_faq_page(faqs))
@@ -167,6 +223,7 @@ SAMPLE_CONFIG = {
     "phone": "(415) 555-0100",
     "price_range": "$$",
     "city": "San Francisco",
+    "primary_service": "Appliance Repair",
     "description": "Professional appliance repair in San Francisco. Same-day service for washers, dryers, refrigerators, dishwashers, and ovens.",
     "address": {
         "street": "123 Market Street",
@@ -220,12 +277,21 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=__doc__
     )
-    parser.add_argument('--config', help='Path to business config JSON')
+    source = parser.add_mutually_exclusive_group()
+    source.add_argument('--config', help='Path to business config JSON')
+    source.add_argument('--sample', action='store_true', help='Run with embedded sample data (appliance repair, San Francisco)')
     parser.add_argument('--type', choices=['local-business', 'service-area', 'faq'], default='local-business',
                         help='Schema type to generate')
+    parser.add_argument('--country', default=None,
+                        help='ISO 3166-1 alpha-2 country code for addressCountry (default: config address.country or country, else US)')
+    parser.add_argument('--business-type', default=None,
+                        help='schema.org LocalBusiness subtype, e.g. MovingCompany, Plumber, HVACBusiness '
+                             '(default: config schema_type, else LocalBusiness + HomeAndConstructionBusiness)')
     parser.add_argument('--neighborhood', help='Neighborhood (for service-area type)', default='')
-    parser.add_argument('--service', help='Service name (for service-area type)', default='Appliance Repair')
-    parser.add_argument('--faqs', help='Path to FAQs JSON (for faq type)')
+    parser.add_argument('--service', default=None,
+                        help='Service name (for service-area type; default: config primary_service, '
+                             'else first config service, else "Appliance Repair")')
+    parser.add_argument('--faqs', help='Path to FAQs JSON (for faq / service-area type; default: config faqs)')
     parser.add_argument('--html', action='store_true', help='Output as <script> HTML tag')
     args = parser.parse_args()
 
@@ -236,26 +302,43 @@ def main():
         config = SAMPLE_CONFIG
         print('[INFO] No --config provided. Using sample data.\n')
 
+    try:
+        country = resolve_country(args.country, config)
+        business_type = resolve_business_type(args.business_type, config)
+    except ValueError as e:
+        parser.error(str(e))
+
+    # Sample FAQs are appliance-repair copy for the sample business — only fall
+    # back to them for the sample run, never for a user-supplied config.
     faqs = None
     if args.faqs:
         with open(args.faqs) as f:
             faqs = json.load(f)
+    elif args.config:
+        faqs = config.get('faqs')
     elif args.type in ('service-area', 'faq'):
         faqs = SAMPLE_FAQS
 
+    service = (args.service or config.get('primary_service')
+               or (config.get('services') or [None])[0] or 'Appliance Repair')
+
     if args.type == 'local-business':
-        schemas = [build_local_business(config)]
+        schemas = [build_local_business(config, country=country, business_type=business_type)]
     elif args.type == 'service-area':
         schemas = build_service_area_page_schemas(
             config,
-            neighborhood=args.neighborhood or 'Richmond District',
-            primary_service=args.service,
-            faqs=faqs
+            neighborhood=args.neighborhood or ('Richmond District' if not args.config else ''),
+            primary_service=service,
+            faqs=faqs,
+            country=country,
+            business_type=business_type,
         )
     elif args.type == 'faq':
-        schemas = [build_faq_page(faqs or SAMPLE_FAQS)]
+        if not faqs:
+            parser.error('--type faq needs FAQs: pass --faqs faqs.json or add a "faqs" list to the config')
+        schemas = [build_faq_page(faqs)]
     else:
-        schemas = [build_local_business(config)]
+        schemas = [build_local_business(config, country=country, business_type=business_type)]
 
     for schema in schemas:
         if args.html:

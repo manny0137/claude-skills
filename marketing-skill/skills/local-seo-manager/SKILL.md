@@ -138,28 +138,42 @@ Service area pages rank for "[service] in [neighborhood]" searches — the highe
 
 ### Service Area Page Template
 
-Generate pages using `scripts/service_area_generator.py`, then customize:
+Generate pages using `scripts/service_area_generator.py`, then customize. The industry-specific
+sections (specialty H2, common-problems H2, FAQ starters, differentiators) come from a built-in
+profile — `appliance-repair`, `hvac`, `plumbing`, `electrical`, `cleaning`, `moving` — selected with
+`--industry` (or the config's `industry` / `business_type`). Anything else gets generic sections built
+from your service list.
+
+```bash
+python3 scripts/service_area_generator.py --sample            # appliance repair, San Francisco demo
+python3 scripts/service_area_generator.py --list-industries    # show built-in profiles
+python3 scripts/service_area_generator.py --config business.json --industry moving --country NZ \
+    --neighborhood "Ponsonby" --postcode 1011 --landmark "Ponsonby Road" --nearby "Grey Lynn,Herne Bay"
+```
+
+Config keys: `business_name`, `primary_service`, `services`, `city`, `phone`, `website` (required);
+`business_type`, `industry`, `state`, `country`, `years_in_business`, `brands_serviced` (optional).
 
 ```
-[Title]: [Appliance Repair] in [Neighborhood Name], [City] | [Business Name]
+[Title]: [Primary Service] in [Neighborhood Name], [City] | [Business Name]
 [Meta]: [Business Name] provides [service] in [Neighborhood]. [Unique selling point]. Call [phone] or book online.
 
-H1: [Appliance Repair] in [Neighborhood Name]
+H1: [Primary Service] in [Neighborhood Name]
 
 [Opening paragraph — 150 words]
 Mention: neighborhood name, services offered, years in business, why locals choose you.
 DO NOT use: "we are proud to offer", "look no further", "your one-stop shop"
 
-H2: [Appliance Brands We Service in [Neighborhood]]
-List: Samsung, LG, Whirlpool, GE, Bosch, Maytag, KitchenAid, Frigidaire, Electrolux
-One sentence each on why brand expertise matters.
+H2: [Industry specialty section — e.g. "Appliance Brands We Service in [Neighborhood]",
+     "Moves We Handle in [Neighborhood]", "Plumbing Services We Provide in [Neighborhood]"]
+One sentence each on the brands / systems / service types you cover.
 
 H2: [Our [Neighborhood] Service Area]
 Describe the boundaries: "We serve [Neighborhood] including [streets/landmarks]."
 Mention adjacent neighborhoods if relevant for internal linking.
 
-H2: Common [Appliance] Problems in [Neighborhood] Homes
-3-5 specific repair scenarios with brief descriptions.
+H2: Common [Industry] Problems in [Neighborhood] (e.g. "Moving Challenges in [Neighborhood]")
+3-5 specific local scenarios with brief descriptions.
 This section adds genuine local relevance.
 
 H2: Why [Business Name] for [Neighborhood] Residents
@@ -170,7 +184,7 @@ H2: Frequently Asked Questions
 4-6 Q&A pairs targeting "[service] in [neighborhood]" and related queries.
 Format for FAQPage schema.
 
-H2: Book [Appliance Repair] in [Neighborhood]
+H2: Book [Primary Service] in [Neighborhood]
 CTA section with phone, booking link, hours.
 Repeat the local address/service area for reinforcement.
 ```
@@ -228,12 +242,27 @@ The script checks known directory listings and outputs a consistency report with
 
 Generate with `scripts/schema_generator.py`. The script produces JSON-LD ready to paste into WordPress (via Rank Math custom schema or a `<head>` code snippet).
 
+```bash
+python3 scripts/schema_generator.py --sample                          # US appliance-repair demo
+python3 scripts/schema_generator.py --config business.json --country NZ --business-type MovingCompany
+python3 scripts/schema_generator.py --config business.json --type service-area \
+    --neighborhood "Ponsonby" --country NZ --business-type MovingCompany
+```
+
+- `--country` — ISO 3166-1 alpha-2 code for `addressCountry` (default: config `address.country`, else `US`).
+- `--business-type` — the most specific schema.org subtype (`MovingCompany`, `Plumber`, `HVACBusiness`,
+  `Electrician`, `HousePainter`, `Locksmith`, ...). Default: `["LocalBusiness", "HomeAndConstructionBusiness"]`.
+  Unknown subtypes are still emitted, with a spelling warning on stderr.
+- With `--config`, FAQ blocks come from `--faqs` or the config's `faqs` list — the sample appliance FAQs
+  are only used for the `--sample` run.
+
 **Priority schema types for local service businesses:**
 
 | Type | Use For | Impact |
 |---|---|---|
 | `LocalBusiness` | All location pages | High — establishes entity in Google's knowledge graph |
 | `HomeAndConstructionBusiness` | Appliance repair, HVAC, plumbing, electrical | High — specific category signal |
+| Specific subtype (`MovingCompany`, `Plumber`, `HVACBusiness`, `Electrician`, ...) | When schema.org has an exact match — pass via `--business-type` | High — most specific category signal |
 | `Service` | Individual service pages | Medium — helps service-specific queries |
 | `FAQPage` | Pages with FAQ sections | High — rich results + AI citation |
 | `Review` / `AggregateRating` | Pages showing review stars | High — CTR lift from star snippets |
@@ -283,8 +312,8 @@ Flag these without being asked:
 ## Scripts
 
 - `scripts/nap_checker.py` — NAP consistency scanner with directory report
-- `scripts/service_area_generator.py` — Service area page content generator
-- `scripts/schema_generator.py` — LocalBusiness / HomeAndConstructionBusiness JSON-LD generator
+- `scripts/service_area_generator.py` — Service area page brief generator (`--industry` profiles: appliance-repair, hvac, plumbing, electrical, cleaning, moving, generic fallback)
+- `scripts/schema_generator.py` — LocalBusiness JSON-LD generator (`--country`, `--business-type` for any schema.org subtype)
 
 ---
 
